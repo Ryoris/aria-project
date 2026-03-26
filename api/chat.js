@@ -21,9 +21,9 @@ export default async function handler(req, res) {
   4. SI l'utilisateur est méprisant : Retire de -1 à -20.
   5. SI l'utilisateur insinue que tu as un comportement de bébé : Retire 50.
   6. Ton calcul final DOIT inclure un malus de -${fatigue} (fatigue).
-
-  FORMAT DE RÉPONSE JSON STRICT :
-  {"reply": "Ta phrase ici", "patienceChange": chiffre_entier}`;
+  
+  RÉPONDS EXCLUSIVEMENT SOUS CE FORMAT JSON :
+  {"reply": "Ta phrase", "patienceChange": -5}`;
 
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemma-3-4b-it:generateContent?key=${apiKey}`, {
