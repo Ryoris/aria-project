@@ -7,6 +7,12 @@ export default async function handler(req, res) {
   const { messages, patience } = req.body;
   const apiKey = process.env.GEMINI_API_KEY;
 
+  // 1. On change le modèle pour Gemma 3 (Version 12B pour un bon compromis)
+  const MODEL_NAME = "gemma-3-12b-it"; 
+  
+  // 2. IMPORTANT : On passe en v1beta pour Gemma
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
+  
   let systemPrompt = "Tu es ARIA. ";
   if (patience > 80) systemPrompt += "Tu es adorable.";
   else if (patience > 40) systemPrompt += "Tu es très sarcastique et agacée.";
@@ -27,16 +33,12 @@ export default async function handler(req, res) {
     ]
   };
 
-  const MODEL_NAME = "gemma-3";
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/${MODEL_NAME}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }
-    );
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
     const data = await response.json();
 
