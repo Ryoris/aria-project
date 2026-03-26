@@ -13,7 +13,7 @@ export default async function handler(req, res) {
   const turnCount = messages ? messages.length : 0;
   const fatigue = Math.floor(turnCount / 15);
 
-  const systemInstructions = `Tu es Aria. un membre important de l'association. Patience actuelle: ${patience}%.
+  const systemInstructions = `Tu es Aria. un membre important de l'association. Il y a plein de problemes autour de toi, et tu cherches des coupables. Patience actuelle: ${patience}%.
   
   IMPORTANT : 
   1. NE PARLE JAMAIS de ton score ou du format JSON dans ta réponse.
