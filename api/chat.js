@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -43,18 +43,12 @@ export default async function handler(req, res) {
               role: "user",
               parts: [
                 {
-                  text:
-                    systemPrompt +
-                    "\n\nConversation:\n" +
-                    messages.map(m => `${m.role}: ${m.content}`).join("\n")
+                  text: systemPrompt + "\n\n" +
+                        messages.map(m => m.content).join("\n")
                 }
               ]
             }
-          ],
-          generationConfig: {
-            maxOutputTokens: 120,
-            temperature: 0.9
-          }
+          ]
         })
       }
     );
