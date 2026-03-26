@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARIA — Assistante Vraiment Très Patiente</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e0d0c;
+    --surface: #161513;
+    --border: #2a2825;
+    --text: #e8e4dc;
+    --text-dim: #7a756b;
+    --accent: #c8b89a;
+    --p-green: #6fcf97;
+    --p-yellow: #f2c94c;
+    --p-red: #eb5757;
+    --p-dark: #9b1c1c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .container { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 20px; }
+
+  /* Header */
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .brand h1 { font-family: 'DM Serif Display', serif; font-size: 26px; color: var(--accent); }
+  .brand p { font-size: 10px; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 2px; }
+  .status-dot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--p-green); box-shadow: 0 0 6px var(--p-green); transition: background 1s, box-shadow 1s; }
+
+  /* Patience */
+  .patience-container { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; }
+  .patience-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px; }
+  .patience-label span:last-child { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .patience-track { height: 6px; background: #1e1c1a; border-radius: 3px; overflow: hidden; }
+  .patience-fill { height: 100%; width: 100%; border-radius: 3px; background: var(--p-green); transition: width 0.6s cubic-bezier(0.25,0.46,0.45,0.94), background 1s; }
+  .mood-text { font-size: 10px; color: var(--text-dim); margin-top: 6px; font-style: italic; letter-spacing: 0.03em; }
+
+  /* Chat */
+  .chat-window { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; height: 400px; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth; }
+  .chat-window::-webkit-scrollbar { width: 4px; }
+  .chat-window::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .message { display: flex; flex-direction: column; gap: 4px; animation: fadeIn 0.3s ease; max-width: 88%; }
+  .message.user { align-self: flex-end; align-items: flex-end; }
+  .message.ai { align-self: flex-start; align-items: flex-start; }
+
+  .message-label { font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-dim); }
+  .message-bubble { padding: 10px 14px; border-radius: 4px; font-size: 13px; line-height: 1.6; }
+  .message.user .message-bubble { background: #201e1b; border: 1px solid var(--border); }
+  .message.ai .message-bubble { background: #1a1917; border: 1px solid var(--border); color: var(--accent); transition: color 0.5s, border-color 0.5s, background 0.5s; }
+  .message.ai.angry .message-bubble { color: #e07070; border-color: #5a2020; background: #1a1212; }
+  .message.ai.furious .message-bubble { color: #ff6b6b; border-color: #7a1515; background: #1f0e0e; }
+
+  .typing { display: flex; gap: 4px; padding: 12px 14px; background: #1a1917; border: 1px solid var(--border); border-radius: 4px; align-self: flex-start; animation: fadeIn 0.3s ease; }
+  .typing span { width: 5px; height: 5px; border-radius: 50%; background: var(--text-dim); animation: bounce 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+
+  /* Input */
+  .input-area { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; transition: border-color 0.3s; }
+  .input-area:focus-within { border-color: var(--accent); }
+  .input-area.blocked { border-color: var(--p-dark) !important; animation: shake 0.5s ease; }
+  textarea { width: 100%; background: transparent; border: none; outline: none; color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px; padding: 14px 16px 0; resize: none; line-height: 1.5; min-height: 52px; }
+  textarea::placeholder { color: var(--text-dim); }
+  textarea:disabled { opacity: 0.3; cursor: not-allowed; }
+  .input-footer { display: flex; justify-content: flex-end; padding: 8px 16px 12px; }
+  .send-btn { background: var(--accent); color: var(--bg); border: none; padding: 6px 16px; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; border-radius: 2px; transition: opacity 0.2s, transform 0.1s; font-weight: 500; }
+  .send-btn:hover:not(:disabled) { opacity: 0.85; transform: translateY(-1px); }
+  .send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Blocked overlay */
+  .blocked-overlay { display: none; background: var(--surface); border: 1px solid #5a1515; border-radius: 4px; padding: 32px; text-align: center; flex-direction: column; gap: 12px; align-items: center; animation: fadeIn 0.5s ease; }
+  .blocked-overlay.show { display: flex; }
+  .blocked-title { font-family: 'DM Serif Display', serif; font-size: 28px; color: var(--p-red); font-style: italic; }
+  .blocked-sub { font-size: 11px; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+  .score-display { font-size: 56px; font-family: 'DM Serif Display', serif; color: var(--accent); margin: 8px 0; }
+  .score-label { font-size: 10px; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
+  .restart-btn { background: transparent; border: 1px solid var(--border); color: var(--text); padding: 10px 24px; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; border-radius: 2px; transition: border-color 0.2s, color 0.2s; margin-top: 8px; }
+  .restart-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Animations */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
+  @keyframes flash { 0% { background: var(--bg); } 30% { background: #1a0808; } 100% { background: var(--bg); } }
+  .flash { animation: flash 0.3s ease; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <div class="header-top">
+      <div class="brand">
+        <h1>ARIA</h1>
+        <p>Assistante Raisonnablement Impartiale &amp; Agréable</p>
+      </div>
+      <div class="status-dot">
+        <div class="dot" id="statusDot"></div>
+        <span id="statusText">En ligne</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="patience-container">
+    <div class="patience-label">
+      <span>Niveau de patience</span>
+      <span id="patienceNum">100%</span>
+    </div>
+    <div class="patience-track">
+      <div class="patience-fill" id="patienceFill"></div>
+    </div>
+    <div class="mood-text" id="moodText">😊 Humeur : Sereine et disponible</div>
+  </div>
+
+  <div class="chat-window" id="chatWindow">
+    <div class="message ai">
+      <div class="message-label">ARIA</div>
+      <div class="message-bubble">Bonjour ! Je suis ARIA, votre assistante virtuelle. Comment puis-je vous aider aujourd'hui ? Je suis là pour vous, sans aucun jugement. 🌟</div>
+    </div>
+  </div>
+
+  <div class="blocked-overlay" id="blockedOverlay">
+    <div class="blocked-title">Conversation terminée.</div>
+    <div class="blocked-sub">ARIA a quitté le chat</div>
+    <div class="score-display" id="finalScore">0</div>
+    <div class="score-label">échanges avant le blocage</div>
+    <button class="restart-btn" onclick="restartGame()">↩ Recommencer</button>
+  </div>
+
+  <div class="input-area" id="inputArea">
+    <textarea id="userInput" placeholder="Écrivez quelque chose..." rows="2" maxlength="300"></textarea>
+    <div class="input-footer">
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">Envoyer</button>
+    </div>
+  </div>
+
+</div>
+<script>
+  let patience = 100;
+  let messageCount = 0;
+  let isBlocked = false;
+  let isTyping = false;
+  let history = [];
+
+  const $ = id => document.getElementById(id);
+
+  function updateUI() {
+    $('patienceFill').style.width = patience + '%';
+    $('patienceFill').style.background = patience > 60 ? '#6fcf97' : patience > 30 ? '#f2c94c' : '#eb5757';
+    $('patienceNum').textContent = patience + '%';
+    $('statusDot').style.background = patience > 60 ? '#6fcf97' : patience > 30 ? '#f2c94c' : '#eb5757';
+    $('statusDot').style.boxShadow = `0 0 6px ${patience > 60 ? '#6fcf97' : patience > 30 ? '#f2c94c' : '#eb5757'}`;
+    const moods = [[80,'😊 Humeur : Sereine et disponible'],[60,'😐 Humeur : Légèrement irritée'],[40,'😒 Humeur : Clairement agacée'],[20,'😤 Humeur : Hostile et sarcastique'],[0,'🤬 Humeur : Sur le point d\'exploser']];
+    $('moodText').textContent = moods.find(([t]) => patience > t)?.[1] ?? moods[4][1];
+  }
+
+  function addMessage(role, text) {
+    const wrap = document.createElement('div');
+    wrap.className = `message ${role}`;
+    if (role === 'ai') {
+      if (patience <= 20) wrap.classList.add('furious');
+      else if (patience <= 40) wrap.classList.add('angry');
+    }
+    wrap.innerHTML = `<div class="message-label">${role === 'user' ? 'VOUS' : 'ARIA'}</div><div class="message-bubble">${text}</div>`;
+    $('chatWindow').appendChild(wrap);
+    $('chatWindow').scrollTop = 9999;
+  }
+
+  function showTyping() {
+    const t = document.createElement('div');
+    t.className = 'typing'; t.id = 'typing';
+    t.innerHTML = '<span></span><span></span><span></span>';
+    $('chatWindow').appendChild(t);
+    $('chatWindow').scrollTop = 9999;
+  }
+
+  function hideTyping() { const t = $('typing'); if (t) t.remove(); }
+
+  function decreasePatience(msg) {
+    let d = Math.floor(Math.random() * 8) + 5;
+    ['idiot','nul','stupide','inutile','bête','con','merde','wtf','???','!!'].forEach(w => { if (msg.toLowerCase().includes(w)) d += 8; });
+    if (Math.random() < 0.15) d += 10;
+    patience = Math.max(0, patience - d);
+    if (d > 15) { document.body.classList.add('flash'); setTimeout(() => document.body.classList.remove('flash'), 300); }
+    updateUI();
+  }
+
+  async function sendMessage() {
+    const text = $('userInput').value.trim();
+    if (!text || isTyping || isBlocked) return;
+
+    messageCount++;
+    $('userInput').value = '';
+    addMessage('user', text);
+    decreasePatience(text);
+    history.push({ role: 'user', content: text });
+
+    isTyping = true;
+    $('sendBtn').disabled = true;
+    $('userInput').disabled = true;
+    showTyping();
+
+    await new Promise(r => setTimeout(r, patience > 60 ? 1200 : patience > 30 ? 700 : 400));
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history.slice(-10), patience })
+      });
+      const data = await res.json();
+      const reply = data.reply || '...';
+      hideTyping();
+      addMessage('ai', reply);
+      history.push({ role: 'assistant', content: reply });
+    } catch {
+      hideTyping();
+      addMessage('ai', '...');
+    }
+
+    isTyping = false;
+    if (patience <= 0) { setTimeout(triggerBlock, 800); return; }
+    $('sendBtn').disabled = false;
+    $('userInput').disabled = false;
+    $('userInput').focus();
+  }
+
+  function triggerBlock() {
+    isBlocked = true;
+    $('sendBtn').disabled = true;
+    $('userInput').disabled = true;
+    $('statusText').textContent = 'Bloqué(e)';
+    $('inputArea').classList.add('blocked');
+    setTimeout(() => {
+      $('chatWindow').style.display = 'none';
+      $('inputArea').style.display = 'none';
+      $('blockedOverlay').classList.add('show');
+      $('finalScore').textContent = messageCount;
+    }, 600);
+  }
+
+  function restartGame() {
+    patience = 100; messageCount = 0; isBlocked = false; history = [];
+    $('chatWindow').innerHTML = `<div class="message ai"><div class="message-label">ARIA</div><div class="message-bubble">Bonjour ! Je suis ARIA, votre assistante virtuelle. Comment puis-je vous aider aujourd'hui ? Je suis là pour vous, sans aucun jugement. 🌟</div></div>`;
+    $('chatWindow').style.display = 'flex';
+    $('inputArea').style.display = 'block';
+    $('inputArea').classList.remove('blocked');
+    $('blockedOverlay').classList.remove('show');
+    $('sendBtn').disabled = false;
+    $('userInput').disabled = false;
+    $('statusText').textContent = 'En ligne';
+    updateUI();
+    $('userInput').focus();
+  }
+
+  $('userInput').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+  updateUI();
+  $('userInput').focus();
+</script>
+</body>
+</html>
