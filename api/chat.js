@@ -16,12 +16,11 @@ export default async function handler(req, res) {
   else if (patience > 20) systemPrompt = "Tu es ARIA à bout de nerfs, très sec...";
   else systemPrompt = "Tu es ARIA furieuse, dernière réponse...";
 
+  const lastMessage = messages[messages.length - 1]?.content || '';
+  const userContent = systemPrompt + '\n\n' + lastMessage;
+  
   const geminiMessages = [
-    { role: "user", parts: [{ text: systemPrompt }] },
-    ...messages.slice(-5).map(m => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }]
-    }))
+    { role: "user", parts: [{ text: userContent }] }
   ];
 
   try {
