@@ -20,12 +20,22 @@ export default async function handler(req, res) {
 
   const lastUserMessage = messages[messages.length - 1]?.content || '';
 
+  const systemPrompt = `Tu es ARIA. Ton humeur actuelle est : ${patience}%.
+  Regarde le message de l'utilisateur et décide si sa patience doit augmenter ou baisser.
+  Rends TA RÉPONSE AU FORMAT JSON STRICT :
+  {
+    "reply": "Ta réponse en tant qu'ARIA",
+    "patienceChange": -10 (ou +10, etc.)
+  }`;
+
   // IMPORTANT : On utilise le format le plus simple possible pour éviter les erreurs de version
   const payload = {
     contents: [{
       role: "user",
       parts: [{ text: `INSTRUCTION: ${systemPrompt}\n\nMESSAGE: ${lastUserMessage}` }]
     }],
+    
+    generationConfig: { response_mime_type: "application/json" }
     // On désactive les filtres pour que l'IA puisse être "méchante" sans être bloquée
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -41,13 +51,17 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
+    const result = JSON.parse(data.candidates[0].content.parts[0].text);
 
     if (data.error) return res.status(500).json({ reply: "Erreur API: " + data.error.message });
 
     const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    // ON RENVOIE "reply" pour matcher ton frontend
-    return res.status(200).json({ reply: aiText || "Je n'ai rien à te dire." });
+    // On renvoie les deux infos au front
+    return res.status(200).json({ 
+      reply: result.reply, 
+      patienceChange: result.patienceChange 
+    });
 
   } catch (err) {
     return res.status(500).json({ reply: "L'IA est hors ligne..." });
