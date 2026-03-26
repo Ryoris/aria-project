@@ -9,24 +9,25 @@ export default async function handler(req, res) {
   const MODEL_NAME = "gemma-3-4b-it"; 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
   
-  // Fatigue plus douce : -1 tous les 6 messages
+  // CORRECTION ICI : turnCount n'existait pas
+  const turnCount = messages ? messages.length : 0;
   const fatigue = Math.floor(turnCount / 6);
 
   const systemInstructions = `Tu es Aria. Patience actuelle: ${patience}%.
   
   IMPORTANT : 
   1. NE PARLE JAMAIS de ton score ou du format JSON dans ta réponse.
-  2. EN FONCTION DE TA PATIENCE, tu es Sympatique (=>70%) ou Froide (<70%).
-  3. SI l'utilisateur est ADORABLE, poli ou flatteur : Donne un bonus de +1 à +5 (patienceChange).
-  4. SI l'utilisateur est méprisant : Retire de -1 à -20.
-  5. SI l'utilisateur insinue que tu as un comportement de bébé : Retire 50.
+  2. EN FONCTION DE TA PATIENCE, tu es Sympathique (>=70%) ou Froide (<70%).
+  3. SI l'utilisateur est ADORABLE, poli ou flatteur : Donne un bonus de +5 à +15.
+  4. SI l'utilisateur est méprisant : Retire -10 à -20.
+  5. SI l'utilisateur insinue que tu as un comportement de bébé : Retire 50 d'un coup.
   6. Ton calcul final DOIT inclure un malus de -${fatigue} (fatigue).
   
   RÉPONDS EXCLUSIVEMENT SOUS CE FORMAT JSON :
   {"reply": "Ta phrase", "patienceChange": -5}`;
 
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemma-3-4b-it:generateContent?key=${apiKey}`, {
+    const response = await fetch(url, { // Utilisation de la variable url
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -35,27 +36,26 @@ export default async function handler(req, res) {
           parts: [{ text: `${systemInstructions}\n\nHistorique: ${JSON.stringify(messages.slice(-4))}\n\nRéponse JSON :` }]
         }],
         generationConfig: { 
-          temperature: 0.7, // On baisse un peu pour plus de stabilité
-          maxOutputTokens: 150 
+          temperature: 0.8, // Légèrement monté pour plus de "piquant" dans ses insultes
+          maxOutputTokens: 200 
         }
       })
     });
 
     const data = await response.json();
     
-    // Si l'API renvoie une erreur directe
-    if (!data.candidates) {
-      return res.status(200).json({ reply: "Je sature... trop de requêtes.", patienceChange: -2 });
+    if (!data.candidates || !data.candidates[0]) {
+      throw new Error("Réponse API vide");
     }
 
     let rawText = data.candidates[0].content.parts[0].text;
     
-    // Extraction ultra-robuste du JSON
+    // Extraction sécurisée
     const firstBrace = rawText.indexOf('{');
     const lastBrace = rawText.lastIndexOf('}');
     
     if (firstBrace === -1 || lastBrace === -1) {
-       throw new Error("Pas de JSON valide");
+       throw new Error("Format JSON non trouvé");
     }
     
     const cleanJson = rawText.substring(firstBrace, lastBrace + 1);
@@ -64,10 +64,10 @@ export default async function handler(req, res) {
     return res.status(200).json(result);
 
   } catch (err) {
-    // En cas d'erreur de parsing, on renvoie une réponse par défaut cohérente au lieu de planter
+    console.error("Erreur Aria:", err); // Utile pour débugger dans tes logs serveurs
     return res.status(200).json({ 
-      reply: "Tes paroles m'embrouillent l'esprit.", 
-      patienceChange: -5 
+      reply: "Désolée, mon cerveau a grillé... Trop d'émotions d'un coup.", 
+      patienceChange: -2 
     });
   }
 }
