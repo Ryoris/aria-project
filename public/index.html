@@ -208,42 +208,66 @@
     if (d > 15) { document.body.classList.add('flash'); setTimeout(() => document.body.classList.remove('flash'), 300); }
     updateUI();
   }
-
   async function sendMessage() {
     const text = $('userInput').value.trim();
     if (!text || isTyping || isBlocked) return;
-
+  
     messageCount++;
     $('userInput').value = '';
     addMessage('user', text);
-    decreasePatience(text);
+    
+    // On ne diminue plus la patience ici manuellement ! 
+    // On attend que l'IA nous donne le score.
+    
     history.push({ role: 'user', content: text });
-
+  
     isTyping = true;
     $('sendBtn').disabled = true;
     $('userInput').disabled = true;
     showTyping();
-
-    await new Promise(r => setTimeout(r, patience > 60 ? 1200 : patience > 30 ? 700 : 400));
-
+  
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history.slice(-10), patience })
       });
+      
       const data = await res.json();
-      const reply = data.reply || data.error || '...';
+      
       hideTyping();
+  
+      // --- LE CŒUR DU CHANGEMENT ---
+      // On récupère le changement de patience envoyé par le backend
+      const change = data.patienceChange || -5; 
+      patience = Math.min(100, Math.max(0, patience + change));
+      
+      // Si l'IA t'a retiré beaucoup de points d'un coup, on fait flasher l'écran
+      if (change <= -15) {
+        document.body.classList.add('flash');
+        setTimeout(() => document.body.classList.remove('flash'), 300);
+      }
+  
+      updateUI(); // On met à jour la barre de vie immédiatement
+  
+      const reply = data.reply || '...';
       addMessage('ai', reply);
       history.push({ role: 'assistant', content: reply });
-    } catch {
+      // -----------------------------
+  
+    } catch (err) {
       hideTyping();
-      addMessage('ai', '...');
+      addMessage('ai', 'Désolée, mon cerveau a grillé...');
     }
-
+  
     isTyping = false;
-    if (patience <= 0) { setTimeout(triggerBlock, 800); return; }
+    
+    // Vérification de fin de partie
+    if (patience <= 0) { 
+      setTimeout(triggerBlock, 800); 
+      return; 
+    }
+  
     $('sendBtn').disabled = false;
     $('userInput').disabled = false;
     $('userInput').focus();
