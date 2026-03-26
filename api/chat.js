@@ -9,46 +9,65 @@ export default async function handler(req, res) {
   const MODEL_NAME = "gemma-3-4b-it"; 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
   
-  // Fatigue réduite pour laisser une chance au joueur
-  const fatigue = Math.floor(messages.length / 6); 
+  // Fatigue plus douce : -1 tous les 6 messages
+  const fatigue = Math.floor(turnCount / 6);
 
-  const systemInstructions = `Tu es ARIA, une IA instable. Patience actuelle: ${patience}%.
+  const systemInstructions = `Tu es Aria. Patience actuelle: ${patience}%.
   
   IMPORTANT : 
-  1. NE PARLE JAMAIS de ton score de patience ou de "patienceChange" dans ta réponse. 
-  2. TA RÉPONSE doit être naturelle, comme une conversation avec un ami.
+  1. NE PARLE JAMAIS de ton score ou du format JSON dans ta réponse.
+  2. EN FONCTION DE TA PATIENCE, tu es Sympatique (=>70%) ou Froide (<70%).
   3. SI l'utilisateur est ADORABLE, poli ou flatteur : Donne un bonus de +1 à +5 (patienceChange).
   4. SI l'utilisateur est méprisant : Retire de -1 à -20.
   5. SI l'utilisateur insinue que tu as un comportement de bébé : Retire 50.
-  6. Soustrais TOUJOURS ${fatigue} (ta fatigue actuelle) de ton calcul final de patienceChange.
+  6. Ton calcul final DOIT inclure un malus de -${fatigue} (fatigue).
 
   FORMAT DE RÉPONSE JSON STRICT :
   {"reply": "Ta phrase ici", "patienceChange": chiffre_entier}`;
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemma-3-4b-it:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [
-          { role: "user", parts: [{ text: systemInstructions }] },
-          { role: "model", parts: [{ text: "{\"reply\": \"Bien reçu. Je ne mentionnerai plus mes stats et je serai juste moi-même.\", \"patienceChange\": 0}" }] },
-          ...messages.slice(-6).map(m => ({ 
-            role: m.role === 'assistant' ? 'model' : 'user', 
-            parts: [{ text: m.content }] 
-          }))
-        ],
-        generationConfig: { temperature: 0.85 }
+        contents: [{
+          role: "user",
+          parts: [{ text: `${systemInstructions}\n\nHistorique: ${JSON.stringify(messages.slice(-4))}\n\nRéponse JSON :` }]
+        }],
+        generationConfig: { 
+          temperature: 0.7, // On baisse un peu pour plus de stabilité
+          maxOutputTokens: 150 
+        }
       })
     });
 
     const data = await response.json();
-    const rawText = data.candidates[0].content.parts[0].text;
-    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    const result = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
+    
+    // Si l'API renvoie une erreur directe
+    if (!data.candidates) {
+      return res.status(200).json({ reply: "Je sature... trop de requêtes.", patienceChange: -2 });
+    }
+
+    let rawText = data.candidates[0].content.parts[0].text;
+    
+    // Extraction ultra-robuste du JSON
+    const firstBrace = rawText.indexOf('{');
+    const lastBrace = rawText.lastIndexOf('}');
+    
+    if (firstBrace === -1 || lastBrace === -1) {
+       throw new Error("Pas de JSON valide");
+    }
+    
+    const cleanJson = rawText.substring(firstBrace, lastBrace + 1);
+    const result = JSON.parse(cleanJson);
 
     return res.status(200).json(result);
+
   } catch (err) {
-    return res.status(200).json({ reply: "Je... j'ai besoin d'un moment.", patienceChange: -5 });
+    // En cas d'erreur de parsing, on renvoie une réponse par défaut cohérente au lieu de planter
+    return res.status(200).json({ 
+      reply: "Tes paroles m'embrouillent l'esprit.", 
+      patienceChange: -5 
+    });
   }
 }
