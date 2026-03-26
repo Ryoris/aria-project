@@ -6,69 +6,50 @@ export default async function handler(req, res) {
   
   const { messages, patience } = req.body;
   const apiKey = process.env.GEMINI_API_KEY;
-  const MODEL_NAME = "gemini-1.5-flash"; // Flash est plus rapide et suit mieux le format JSON
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
-  
-  // Calcul du malus de temps : plus on parle, plus elle est irritable par défaut
   const turnCount = messages.length;
-  const irritabilityFactor = Math.floor(turnCount / 2); 
 
-  const instructions = `
-    Tu es ARIA, une IA instable et ultra-sensible.
-    TON ÉTAT ACTUEL : Patience à ${patience}%. 
-    (100% = Adorable, 50% = Sarcastique, 10% = Furieuse).
+  // Calcul de l'irritabilité croissante (Fatigue)
+  const fatigue = Math.floor(turnCount / 4); 
 
-    RÈGLES :
-    1. Si l'utilisateur est poli, la patience peut monter (+5).
-    2. Si l'utilisateur est familier, ennuyeux ou impoli, la patience baisse (entre -10 et -30).
-    3. Tu dois TOUJOURS répondre en JSON strict avec ce format :
-    {
-      "reply": "Ta réponse textuelle ici",
-      "patienceChange": -15
-    }
-
-    Note : Applique un malus de -${irritabilityFactor} à chaque calcul car tu fatigues.
-  `;
-
-  const payload = {
-    contents: [
-        { role: "user", parts: [{ text: instructions }] },
-        { role: "model", parts: [{ text: "Compris. Je répondrai uniquement en JSON strict sous le format demandé." }] },
-        ...messages.map(m => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }]
-        }))
-    ],
-    generationConfig: { 
-        response_mime_type: "application/json",
-        temperature: 0.9 // Plus de "personnalité"
-    }
-  };
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  
+  const instructions = `Tu es ARIA, une IA instable. Patience actuelle: ${patience}%.
+  RÈGLES :
+  1. Si l'utilisateur est poli: patienceChange entre +1 et +5.
+  2. Si l'utilisateur est lourd/insultant/ennuyeux: patienceChange entre -10 et -30.
+  3. Ton style change selon la patience :
+     - >80%: Adorable, emojis, aidante.
+     - 40-80%: Sarcastique, utilise des points de suspension, méprisante.
+     - <40%: Froide, agressive, phrases très courtes ou MAJUSCULES.
+  
+  IMPORTANT: Réponds UNIQUEMENT en JSON sous ce format:
+  {"reply": "ton message", "patienceChange": -15}
+  
+  Note: Applique un malus de -${fatigue} à ton calcul final car tu es fatiguée.`;
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        contents: [
+          { role: "user", parts: [{ text: instructions }] },
+          { role: "model", parts: [{ text: "{\"reply\": \"Entendu, je reste dans mon personnage instable et je réponds uniquement en JSON.\", \"patienceChange\": 0}" }] },
+          ...messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }))
+        ],
+        generationConfig: { response_mime_type: "application/json", temperature: 0.8 }
+      })
     });
 
     const data = await response.json();
+    let rawText = data.candidates[0].content.parts[0].text;
     
-    if (!data.candidates || !data.candidates[0]) {
-        throw new Error("Réponse vide de l'IA");
-    }
+    // NETTOYAGE DU JSON (Anti-Erreur de parsing)
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    const result = JSON.parse(jsonMatch ? jsonMatch[0] : rawText);
 
-    const rawText = data.candidates[0].content.parts[0].text;
-    const result = JSON.parse(rawText);
-
-    return res.status(200).json({ 
-      reply: result.reply, 
-      patienceChange: result.patienceChange 
-    });
-
+    return res.status(200).json(result);
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ reply: "ARIA a eu un court-circuit... (Erreur de parsing)", patienceChange: -5 });
+    return res.status(200).json({ reply: "Tu m'as tellement agacée que j'ai buggé. Félicitations.", patienceChange: -10 });
   }
 }
