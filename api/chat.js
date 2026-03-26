@@ -11,16 +11,16 @@ export default async function handler(req, res) {
   
   // CORRECTION ICI : turnCount n'existait pas
   const turnCount = messages ? messages.length : 0;
-  const fatigue = Math.floor(turnCount / 6);
+  const fatigue = Math.floor(turnCount / 15);
 
   const systemInstructions = `Tu es Aria. Patience actuelle: ${patience}%.
   
   IMPORTANT : 
   1. NE PARLE JAMAIS de ton score ou du format JSON dans ta réponse.
-  2. Tu reponds parfois froidement, parfois gentiment à ton interlocuteur.
+  2. Tu reponds parfois froidement, parfois sympatiquement à ton interlocuteur.
   3. SI l'utilisateur est poli ou flatteur : Donne un bonus de +5 à +20 de patience.
-  4. SI l'utilisateur est méprisant : Retire -5 à -20 de patience.
-  5. SI l'utilisateur insinue que tu as un comportement de bébé : Retire -40 de patience exceptionellement.
+  4. SI l'utilisateur est méchant ou sarcastique : Retire de -5 à -20 de patience.
+  5. SI l'utilisateur insinue que tu as un comportement de bébé : Retire -40 de patience.
   6. Ton calcul final DOIT inclure un malus de -${fatigue} (fatigue).
   
   RÉPONDS EXCLUSIVEMENT SOUS CE FORMAT JSON :
