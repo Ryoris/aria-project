@@ -233,7 +233,7 @@
         body: JSON.stringify({ messages: history.slice(-10), patience })
       });
       const data = await res.json();
-      const reply = data.reply || '...';
+      const reply = data.reply || data.error || '...';
       hideTyping();
       addMessage('ai', reply);
       history.push({ role: 'assistant', content: reply });
