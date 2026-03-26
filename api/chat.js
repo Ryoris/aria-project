@@ -1,76 +1,77 @@
 export default async function handler(req, res) {
-  // 1. Gestion des Headers CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Gestion du preflight (requête de vérification du navigateur)
   if (req.method === 'OPTIONS') return res.status(200).end();
-  
-  // Restriction à la méthode POST uniquement
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { messages, patience } = req.body;
   const apiKey = process.env.GEMINI_API_KEY;
 
-  if (!apiKey) return res.status(500).json({ error: 'Clé API manquante dans les variables d env' });
+  if (!apiKey) return res.status(500).json({ error: 'API key not configured' });
 
-  // 2. Définition du caractère d'ARIA selon la patience
-  let systemPrompt = "";
-  if (patience > 80) systemPrompt = "Tu es ARIA, une IA assistante très agréable et polie.";
-  else if (patience > 60) systemPrompt = "Tu es ARIA, une IA assistante, un peu froide et concise.";
-  else if (patience > 40) systemPrompt = "Tu es ARIA, agacée, sarcastique et tu n'as pas envie d'aider.";
-  else if (patience > 20) systemPrompt = "Tu es ARIA à bout de nerfs, très sèche et méprisante.";
-  else systemPrompt = "Tu es ARIA furieuse, c'est ta dernière réponse avant de couper court.";
+  // 1. Définition du comportement (Prompt Système)
+  let systemPrompt = "Tu es ARIA. ";
+  if (patience > 80) systemPrompt += "Tu es très agréable et polie.";
+  else if (patience > 60) systemPrompt += "Tu es un peu froide et concise.";
+  else if (patience > 40) systemPrompt += "Tu es agacée et sarcastique.";
+  else if (patience > 20) systemPrompt += "Tu es à bout de nerfs et très sèche.";
+  else systemPrompt += "Tu es furieuse, c'est ta dernière réponse.";
 
-  // 3. Préparation du message pour l'API
-  const lastUserMessage = messages[messages.length - 1]?.content || '';
-  
-  // Utilisation du modèle stable gemini-1.5-flash
-  const MODEL_NAME = "gemini-1.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
+  // 2. Extraction du dernier message de l'utilisateur
+  const lastUserMessage = messages && messages.length > 0 
+    ? messages[messages.length - 1].content 
+    : "";
 
+  // 3. Construction du Payload (Version simplifiée compatible v1)
+  // On place le système ET le message dans 'contents' pour éviter les erreurs de version
   const payload = {
-    // On définit le comportement d'ARIA ici
-    system_instruction: {
-      parts: [{ text: systemPrompt }]
-    },
-    // On envoie le contenu utilisateur ici
     contents: [
       {
         role: "user",
-        parts: [{ text: lastUserMessage }]
+        parts: [{ text: `CONSIGNE SYSTÈME: ${systemPrompt}\n\nMESSAGE UTILISATEUR: ${lastUserMessage}` }]
       }
+    ],
+    // On baisse le seuil de sécurité pour éviter les blocages sur le ton "furieux"
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" }
     ]
   };
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    // On utilise l'URL v1 qui est la plus stable pour Gemini 2.5
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }
+    );
 
     const data = await response.json();
 
-    // Gestion des erreurs renvoyées par Google
-    if (!response.ok) {
-      console.error("Erreur Google API:", data);
-      return res.status(response.status).json({ error: data.error?.message || "Erreur API" });
+    if (data.error) {
+      return res.status(500).json({ error: data.error.message });
     }
 
-    // Extraction de la réponse textuelle
+    // Vérification du blocage par filtre de sécurité (Cause possible du "...")
+    if (data.candidates?.[0]?.finishReason === "SAFETY") {
+      return res.status(200).json({ text: "ARIA est trop énervée pour répondre (Bloqué par filtre de sécurité)." });
+    }
+
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
+    
     if (!text) {
-      return res.status(500).json({ error: "L'IA a renvoyé une réponse vide." });
+      return res.status(500).json({ error: "Réponse vide, vérifiez les logs API." });
     }
 
-    // On renvoie le texte au front-end
     return res.status(200).json({ text });
 
   } catch (err) {
-    console.error("Erreur Fetch:", err);
-    return res.status(500).json({ error: 'Impossible de contacter Gemini' });
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to reach Gemini' });
   }
 }
