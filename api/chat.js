@@ -38,9 +38,16 @@ export default async function handler(req, res) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: geminiMessages,
-          generationConfig: { maxOutputTokens: 120, temperature: 0.9 }
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: systemPrompt + "\n\n" + messages.map(m => m.content).join("\n") }]
+            }
+          ],
+          generationConfig: {
+            maxOutputTokens: 120,
+            temperature: 0.9
+          }
         })
       }
     );
