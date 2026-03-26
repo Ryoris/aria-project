@@ -107,6 +107,19 @@
   @keyframes shake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
   @keyframes flash { 0% { background: var(--bg); } 30% { background: #1a0808; } 100% { background: var(--bg); } }
   .flash { animation: flash 0.3s ease; }
+
+  @keyframes shakeWindow {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(2px, -2px); }
+    50% { transform: translate(-2px, 2px); }
+    75% { transform: translate(2px, 2px); }
+    100% { transform: translate(0, 0); }
+  }
+  
+  .critical-anger {
+    animation: shakeWindow 0.1s infinite;
+    border-color: var(--p-red) !important;
+  }  
 </style>
 </head>
 <body>
@@ -169,12 +182,25 @@
   const $ = id => document.getElementById(id);
 
   function updateUI() {
-    $('patienceFill').style.width = patience + '%';
-    $('patienceFill').style.background = patience > 60 ? '#6fcf97' : patience > 30 ? '#f2c94c' : '#eb5757';
+    const fill = $('patienceFill');
+    fill.style.width = patience + '%';
+    fill.style.background = patience > 60 ? '#6fcf97' : patience > 30 ? '#f2c94c' : '#eb5757';
     $('patienceNum').textContent = patience + '%';
-    $('statusDot').style.background = patience > 60 ? '#6fcf97' : patience > 30 ? '#f2c94c' : '#eb5757';
-    $('statusDot').style.boxShadow = `0 0 6px ${patience > 60 ? '#6fcf97' : patience > 30 ? '#f2c94c' : '#eb5757'}`;
-    const moods = [[80,'😊 Humeur : Sereine et disponible'],[60,'😐 Humeur : Légèrement irritée'],[40,'😒 Humeur : Clairement agacée'],[20,'😤 Humeur : Hostile et sarcastique'],[0,'🤬 Humeur : Sur le point d\'exploser']];
+    
+    // Effet de tremblement si patience basse
+    if (patience <= 25) {
+      $('chatWindow').classList.add('critical-anger');
+    } else {
+      $('chatWindow').classList.remove('critical-anger');
+    }
+  
+    const moods = [
+      [80,'😊 Humeur : Sereine et disponible'],
+      [60,'😐 Humeur : Légèrement irritée'],
+      [40,'😒 Humeur : Clairement agacée'],
+      [20,'😤 Humeur : Hostile et sarcastique'],
+      [0,'🤬 Humeur : Sur le point d\'exploser']
+    ];
     $('moodText').textContent = moods.find(([t]) => patience > t)?.[1] ?? moods[4][1];
   }
 
