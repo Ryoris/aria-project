@@ -6,36 +6,44 @@ export default async function handler(req, res) {
   
   const { messages, patience } = req.body;
   const apiKey = process.env.GEMINI_API_KEY;
+  const MODEL_NAME = "gemini-1.5-flash"; // Flash est plus rapide et suit mieux le format JSON
 
-  // 1. On change le modèle pour Gemma 3 (Version 12B pour un bon compromis)
-  const MODEL_NAME = "gemma-3-4b-it"; 
-  
-  // 2. IMPORTANT : On passe en v1beta pour Gemma
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
   
-  let systemPrompt = "Tu es ARIA. ";
-  if (patience > 80) systemPrompt += "Tu es sympatique.";
-  else if (patience > 40) systemPrompt += "Tu es très sarcastique et agacée.";
-  else systemPrompt += "Tu es furieuse et insultante.";
+  // Calcul du malus de temps : plus on parle, plus elle est irritable par défaut
+  const turnCount = messages.length;
+  const irritabilityFactor = Math.floor(turnCount / 2); 
 
-  const lastUserMessage = messages[messages.length - 1]?.content || '';
+  const instructions = `
+    Tu es ARIA, une IA instable et ultra-sensible.
+    TON ÉTAT ACTUEL : Patience à ${patience}%. 
+    (100% = Adorable, 50% = Sarcastique, 10% = Furieuse).
 
-  const systemPrompt = `Tu es ARIA. Ton humeur actuelle est : ${patience}%.
-  Regarde le message de l'utilisateur et décide si sa patience doit augmenter ou baisser.
-  Rends TA RÉPONSE AU FORMAT JSON STRICT :
-  {
-    "reply": "Ta réponse en tant qu'ARIA",
-    "patienceChange": -10 (ou +10, etc.)
-  }`;
+    RÈGLES :
+    1. Si l'utilisateur est poli, la patience peut monter (+5).
+    2. Si l'utilisateur est familier, ennuyeux ou impoli, la patience baisse (entre -10 et -30).
+    3. Tu dois TOUJOURS répondre en JSON strict avec ce format :
+    {
+      "reply": "Ta réponse textuelle ici",
+      "patienceChange": -15
+    }
 
-  // IMPORTANT : On utilise le format le plus simple possible pour éviter les erreurs de version
+    Note : Applique un malus de -${irritabilityFactor} à chaque calcul car tu fatigues.
+  `;
+
   const payload = {
-    contents: [{
-      role: "user",
-      parts: [{ text: `INSTRUCTION: ${systemPrompt}\n\nMESSAGE: ${lastUserMessage}` }]
-    }],
-    
-    generationConfig: { response_mime_type: "application/json" }
+    contents: [
+        { role: "user", parts: [{ text: instructions }] },
+        { role: "model", parts: [{ text: "Compris. Je répondrai uniquement en JSON strict sous le format demandé." }] },
+        ...messages.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+        }))
+    ],
+    generationConfig: { 
+        response_mime_type: "application/json",
+        temperature: 0.9 // Plus de "personnalité"
+    }
     // On désactive les filtres pour que l'IA puisse être "méchante" sans être bloquée
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -51,19 +59,21 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-    const result = JSON.parse(data.candidates[0].content.parts[0].text);
-
-    if (data.error) return res.status(500).json({ reply: "Erreur API: " + data.error.message });
-
-    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    // On renvoie les deux infos au front
+    if (!data.candidates || !data.candidates[0]) {
+        throw new Error("Réponse vide de l'IA");
+    }
+
+    const rawText = data.candidates[0].content.parts[0].text;
+    const result = JSON.parse(rawText);
+
     return res.status(200).json({ 
       reply: result.reply, 
       patienceChange: result.patienceChange 
     });
 
   } catch (err) {
-    return res.status(500).json({ reply: "L'IA est hors ligne..." });
+    console.error(err);
+    return res.status(500).json({ reply: "ARIA a eu un court-circuit... (Erreur de parsing)", patienceChange: -5 });
   }
 }
