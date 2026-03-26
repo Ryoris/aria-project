@@ -120,6 +120,14 @@
     animation: shakeWindow 0.1s infinite;
     border-color: var(--p-red) !important;
   }  
+
+  @keyframes flashGreen {
+    0% { background: var(--bg); }
+    30% { background: #0a1a0e; } /* Vert très sombre */
+    100% { background: var(--bg); }
+  }
+  .flash-success { animation: flashGreen 0.4s ease; }
+  
 </style>
 </head>
 <body>
@@ -265,15 +273,19 @@
   
       // --- LE CŒUR DU CHANGEMENT ---
       // On récupère le changement de patience envoyé par le backend
-      const change = data.patienceChange || -5; 
+      const change = data.patienceChange || 0;
+      const oldPatience = patience;
       patience = Math.min(100, Math.max(0, patience + change));
       
-      // Si l'IA t'a retiré beaucoup de points d'un coup, on fait flasher l'écran
-      if (change <= -15) {
-        document.body.classList.add('flash');
-        setTimeout(() => document.body.classList.remove('flash'), 300);
+      // Effet visuel selon le changement
+      if (patience > oldPatience) {
+          document.body.classList.add('flash-success');
+          setTimeout(() => document.body.classList.remove('flash-success'), 400);
+      } else if (change <= -15) {
+          document.body.classList.add('flash');
+          setTimeout(() => document.body.classList.remove('flash'), 300);
       }
-  
+        
       updateUI(); // On met à jour la barre de vie immédiatement
   
       const reply = data.reply || '...';
