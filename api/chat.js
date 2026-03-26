@@ -41,7 +41,14 @@ export default async function handler(req, res) {
           contents: [
             {
               role: "user",
-              parts: [{ text: systemPrompt + "\n\n" + messages.map(m => m.content).join("\n") }]
+              parts: [
+                {
+                  text:
+                    systemPrompt +
+                    "\n\nConversation:\n" +
+                    messages.map(m => `${m.role}: ${m.content}`).join("\n")
+                }
+              ]
             }
           ],
           generationConfig: {
@@ -53,12 +60,19 @@ export default async function handler(req, res) {
     );
 
     const data = await response.json();
-    console.log("GEMINI RESPONSE:", JSON.stringify(data, null, 2));
+    console.log("FULL GEMINI:", data);
+
+    if (data.error) {
+      console.error("Gemini error:", data.error);
+      return res.status(500).json({ error: data.error.message });
+    }
     
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!text) return res.status(500).json({ error: 'No response from Gemini' });
-    res.status(200).json({ reply: text });
+    
+    if (!text) {
+      console.error("No candidates:", data);
+      return res.status(500).json({ error: "Empty response from Gemini" });
+    }
 
   } catch (err) {
     res.status(500).json({ error: 'Failed to reach Gemini' });
