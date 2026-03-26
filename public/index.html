@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ARIA — Assistante Vraiment Très Patiente</title>
+<title>ARIA — Ton ami</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -129,7 +129,7 @@
     <div class="header-top">
       <div class="brand">
         <h1>ARIA</h1>
-        <p>Assistante Raisonnablement Impartiale &amp; Agréable</p>
+        <p>Ton ami qui est toujours là pour toi</p>
       </div>
       <div class="status-dot">
         <div class="dot" id="statusDot"></div>
@@ -146,7 +146,7 @@
     <div class="patience-track">
       <div class="patience-fill" id="patienceFill"></div>
     </div>
-    <div class="mood-text" id="moodText">😊 Humeur : Sereine et disponible</div>
+    <div class="mood-text" id="moodText">😊 Humeur : Serein</div>
   </div>
 
   <div class="chat-window" id="chatWindow">
@@ -195,11 +195,11 @@
     }
   
     const moods = [
-      [80,'😊 Humeur : Sereine et disponible'],
-      [60,'😐 Humeur : Légèrement irritée'],
-      [40,'😒 Humeur : Clairement agacée'],
-      [20,'😤 Humeur : Hostile et sarcastique'],
-      [0,'🤬 Humeur : Sur le point d\'exploser']
+      [80,'😊 Humeur : Serein'],
+      [60,'😐 Humeur : Irritée'],
+      [40,'😤 Humeur : Clairement agacée'],
+      [20,'🤬 Humeur : Hostile'],
+      [0,'💀 Humeur : ARGGGGGGGGGGG']
     ];
     $('moodText').textContent = moods.find(([t]) => patience > t)?.[1] ?? moods[4][1];
   }
