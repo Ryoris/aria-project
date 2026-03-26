@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   const lastUserMessage = messages[messages.length - 1]?.content || '';
   
   // Utilisation du modèle stable gemini-1.5-flash
-  const MODEL_NAME = "gemini-2.5-flash";
+  const MODEL_NAME = "gemini-1.5-flash";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
 
   const payload = {
