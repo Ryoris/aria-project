@@ -6,12 +6,14 @@ export default async function handler(req, res) {
   
   const { messages, patience } = req.body;
   const apiKey = process.env.GEMINI_API_KEY;
+
+  // ESSAIE "gemma-3-4b-it" SI LE 12B NE MARCHE PAS
   const MODEL_NAME = "gemma-3-12b-it"; 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
   
-  // CORRECTION ICI : turnCount n'existait pas
-  const turnCount = messages ? messages.length : 0;
-  const fatigue = Math.floor(turnCount / 15);
+  const history = messages || [];
+  const turnCount = history.length;
+  const fatigue = Math.floor(turnCount / 10);
 
   const systemInstructions = `Tu es ARIA, un étudiant responsable de la Surveillance de l'association. 
   Patience actuelle : ${patience}%.
@@ -45,50 +47,47 @@ export default async function handler(req, res) {
         }],
         generationConfig: { 
           temperature: 0.8, // Légèrement monté pour plus de "piquant" dans ses insultes
-          maxOutputTokens: 300 
-        }
+          maxOutputTokens: 300,
+          response_mime_type: "application/json" // On force le mode JSON de l'API
+        },
+        // ON DÉSACTIVE LES FILTRES DE SÉCURITÉ POUR ÉVITER LE CRASH
+        safetySettings: [
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+        ]
       })
     });
 
-    // --- SÉCURITÉ AJOUTÉE ICI ---
-    if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Erreur API Google:", errorData);
-        throw new Error("L'API Google a renvoyé une erreur");
-    }
-    
     const data = await response.json();
     
-    // Sécurité si l'API est surchargée
-    if (!data.candidates || !data.candidates[0]) {
-      throw new Error("Réponse API vide");
+    // Si l'API renvoie une erreur (Quota, Key, Model...)
+    if (data.error) {
+        console.error("Erreur API:", data.error.message);
+        return res.status(200).json({ reply: "Désolée, mon accès au réseau est coupé. (Erreur API)", patienceChange: 0 });
     }
 
-    let rawText = data.candidates[0].content.parts[0].text;
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) throw new Error("Pas de texte reçu");
     
-    // Extraction sécurisée
+    // Nettoyage au cas où
     const firstBrace = rawText.indexOf('{');
     const lastBrace = rawText.lastIndexOf('}');
+    const cleanJson = (firstBrace !== -1 && lastBrace !== -1) ? rawText.substring(firstBrace, lastBrace + 1) : rawText;
     
-    if (firstBrace === -1 || lastBrace === -1) {
-       // Si l'IA n'a pas mis d'accolades du tout
-       throw new Error("Format JSON introuvable");
-    }
-    
-    // On ne garde que ce qu'il y a entre les deux
-    const cleanJson = rawText.substring(firstBrace, lastBrace + 1);
     const result = JSON.parse(cleanJson);
 
     return res.status(200).json({
       reply: result.reply || "...",
-      patienceChange: result.patienceChange || -5
+      patienceChange: result.patienceChange || -2
     });
 
   } catch (err) {
-    console.error("Erreur de parsing Aria:", err);
-    // Au lieu de dire "cerveau grillé", on simule une réponse d'ARIA qui s'énerve de ton bug
+    console.error("DEBUG:", err);
     return res.status(200).json({ 
-      reply: "Ta façon de parler est tellement illogique que mes circuits saturent. Recommence, et fais un effort !", 
-      patienceChange: -10 
+      reply: "Stop. Je sature. Ton énergie est trop négative pour mon système.", 
+      patienceChange: -5 
     });
   }
+}
