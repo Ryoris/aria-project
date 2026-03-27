@@ -6,7 +6,7 @@ export default async function handler(req, res) {
   
   const { messages, patience } = req.body;
   const apiKey = process.env.GEMINI_API_KEY;
-  const MODEL_NAME = "gemma-3-4b-it"; 
+  const MODEL_NAME = "gemma-3-12b-it"; 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
   
   // CORRECTION ICI : turnCount n'existait pas
