@@ -41,17 +41,18 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         contents: [{
           role: "user",
-          parts: [{ text: `${systemInstructions}\n\nHistorique: ${JSON.stringify(messages.slice(-8))}\n\nRéponse JSON :` }]
+          parts: [{ text: `${systemInstructions}\n\nHistorique: ${JSON.stringify(messages.slice(-6))}\n\nRéponse JSON :` }]
         }],
         generationConfig: { 
           temperature: 0.8, // Légèrement monté pour plus de "piquant" dans ses insultes
-          maxOutputTokens: 200 
+          maxOutputTokens: 300 
         }
       })
     });
 
     const data = await response.json();
     
+    // Sécurité si l'API est surchargée
     if (!data.candidates || !data.candidates[0]) {
       throw new Error("Réponse API vide");
     }
@@ -63,19 +64,24 @@ export default async function handler(req, res) {
     const lastBrace = rawText.lastIndexOf('}');
     
     if (firstBrace === -1 || lastBrace === -1) {
-       throw new Error("Format JSON non trouvé");
+       // Si l'IA n'a pas mis d'accolades du tout
+       throw new Error("Format JSON introuvable");
     }
     
+    // On ne garde que ce qu'il y a entre les deux
     const cleanJson = rawText.substring(firstBrace, lastBrace + 1);
     const result = JSON.parse(cleanJson);
 
-    return res.status(200).json(result);
+    return res.status(200).json({
+      reply: result.reply || "...",
+      patienceChange: result.patienceChange || -5
+    });
 
   } catch (err) {
-    console.error("Erreur Aria:", err); // Utile pour débugger dans tes logs serveurs
+    console.error("Erreur de parsing Aria:", err);
+    // Au lieu de dire "cerveau grillé", on simule une réponse d'ARIA qui s'énerve de ton bug
     return res.status(200).json({ 
-      reply: "Désolée, mon cerveau a grillé... Trop d'émotions d'un coup.", 
-      patienceChange: -2 
+      reply: "Ta façon de parler est tellement illogique que mes circuits saturent. Recommence, et fais un effort !", 
+      patienceChange: -10 
     });
   }
-}
