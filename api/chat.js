@@ -50,6 +50,13 @@ export default async function handler(req, res) {
       })
     });
 
+    // --- SÉCURITÉ AJOUTÉE ICI ---
+    if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Erreur API Google:", errorData);
+        throw new Error("L'API Google a renvoyé une erreur");
+    }
+    
     const data = await response.json();
     
     // Sécurité si l'API est surchargée
