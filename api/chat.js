@@ -48,15 +48,7 @@ export default async function handler(req, res) {
         generationConfig: { 
           temperature: 0.8, // Légèrement monté pour plus de "piquant" dans ses insultes
           maxOutputTokens: 300,
-          response_mime_type: "application/json" // On force le mode JSON de l'API
         },
-        // ON DÉSACTIVE LES FILTRES DE SÉCURITÉ POUR ÉVITER LE CRASH
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-        ]
       })
     });
 
@@ -64,8 +56,8 @@ export default async function handler(req, res) {
     
     // Si l'API renvoie une erreur (Quota, Key, Model...)
     if (data.error) {
-        console.error("Erreur API:", data.error.message);
-        return res.status(200).json({ reply: "Désolée, mon accès au réseau est coupé. (Erreur API)", patienceChange: 0 });
+        console.error("Erreur API Gemini:", JSON.stringify(data.error));
+        return res.status(200).json({ reply: `Erreur: ${data.error.message}`, patienceChange: 0 });
     }
 
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
