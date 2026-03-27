@@ -41,7 +41,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         contents: [{
           role: "user",
-          parts: [{ text: `${systemInstructions}\n\nHistorique: ${JSON.stringify(messages.slice(-4))}\n\nRéponse JSON :` }]
+          parts: [{ text: `${systemInstructions}\n\nHistorique: ${JSON.stringify(messages.slice(-8))}\n\nRéponse JSON :` }]
         }],
         generationConfig: { 
           temperature: 0.8, // Légèrement monté pour plus de "piquant" dans ses insultes
