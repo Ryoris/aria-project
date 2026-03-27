@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.GEMINI_API_KEY;
 
   // ESSAIE "gemma-3-4b-it" SI LE 12B NE MARCHE PAS
-  const MODEL_NAME = "gemma-3-12b-it"; 
+  const MODEL_NAME = "gemma-3-27b-it"; 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
   
   const history = messages || [];
