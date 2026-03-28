@@ -1,67 +1,95 @@
-import { kv } from "@vercel/kv";
-import { cookies } from "next/headers"; // Vercel serverless compatible
 import crypto from "crypto";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const MODEL_NAME = "gemma-3-27b-it";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://ton-projet.vercel.app";
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "";
 
-const RATE_LIMIT_WINDOW_SEC = 60;
-const RATE_LIMIT_MAX = 10; // requêtes max par IP par minute
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 10;
 
-const SESSION_TTL_SEC = 60 * 60 * 2; // 2h
-const COOKIE_SECRET = process.env.COOKIE_SECRET || "change-moi-en-prod"; // 32+ chars
+// Rate limiting en mémoire (par instance serverless — suffisant pour un petit jeu)
+const rateLimitMap = new Map(); // ip -> { count, resetAt }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const COOKIE_NAME = "aria_session";
+const COOKIE_MAX_AGE = 60 * 60 * 2; // 2h
+const SESSION_MAX_HISTORY = 20;
 
-function signSessionId(id) {
-  return crypto.createHmac("sha256", COOKIE_SECRET).update(id).digest("hex");
+// ─── Chiffrement AES-256-GCM ──────────────────────────────────────────────────
+
+function deriveKey() {
+  const secret = process.env.COOKIE_SECRET;
+  if (!secret || secret.length < 32) throw new Error("COOKIE_SECRET manquant ou trop court (32+ chars requis)");
+  return crypto.createHash("sha256").update(secret).digest();
 }
 
-function verifySessionId(id, sig) {
-  const expected = signSessionId(id);
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+function encryptSession(session) {
+  const key = deriveKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const plaintext = JSON.stringify(session);
+  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  // Format : iv(12) + tag(16) + ciphertext → base64url
+  return Buffer.concat([iv, tag, encrypted]).toString("base64url");
 }
 
-function parseSignedCookie(cookieValue) {
-  if (!cookieValue) return null;
-  const [id, sig] = cookieValue.split(".");
-  if (!id || !sig) return null;
+function decryptSession(token) {
   try {
-    if (!verifySessionId(id, sig)) return null;
-    return id;
-  } catch {
+    const key = deriveKey();
+    const buf = Buffer.from(token, "base64url");
+    if (buf.length < 29) throw new Error("Token trop court");
+    const iv = buf.subarray(0, 12);
+    const tag = buf.subarray(12, 28);
+    const ciphertext = buf.subarray(28);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    const raw = decipher.update(ciphertext, undefined, "utf8") + decipher.final("utf8");
+    const parsed = JSON.parse(raw);
+
+    // Validation de structure
+    if (
+      typeof parsed.patience !== "number" ||
+      typeof parsed.messageCount !== "number" ||
+      !Array.isArray(parsed.history)
+    ) throw new Error("Structure invalide");
+
+    // Borne de sécurité : le client ne peut pas gonfler sa patience
+    parsed.patience = Math.min(100, Math.max(0, parsed.patience));
+    return parsed;
+  } catch (err) {
+    console.warn("[session] Cookie invalide ou falsifié:", err.message);
     return null;
   }
 }
 
-function createSignedCookie(id) {
-  return `${id}.${signSessionId(id)}`;
+function defaultSession() {
+  return { patience: 100, messageCount: 0, history: [] };
 }
 
-async function checkRateLimit(ip) {
-  const key = `rl:${ip}`;
-  const count = await kv.incr(key);
-  if (count === 1) await kv.expire(key, RATE_LIMIT_WINDOW_SEC);
-  return count <= RATE_LIMIT_MAX;
+function buildSetCookie(token, maxAge = COOKIE_MAX_AGE) {
+  return `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}`;
 }
 
-async function getSession(sessionId) {
-  const data = await kv.get(`session:${sessionId}`);
-  if (!data) return { patience: 100, messageCount: 0, history: [] };
-  return data;
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
 }
 
-async function saveSession(sessionId, state) {
-  await kv.set(`session:${sessionId}`, state, { ex: SESSION_TTL_SEC });
-}
-
-// ─── Handler ──────────────────────────────────────────────────────────────────
+// ─── Handler principal ────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  // CORS — restreint au domaine configuré
+  const origin = ALLOWED_ORIGIN || req.headers.origin || "";
+  res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Vary", "Origin");
@@ -74,8 +102,7 @@ export default async function handler(req, res) {
     req.socket?.remoteAddress ||
     "unknown";
 
-  const allowed = await checkRateLimit(ip);
-  if (!allowed) {
+  if (!checkRateLimit(ip)) {
     return res.status(429).json({
       reply: "Trop de messages en peu de temps. Attends une minute.",
       patienceChange: 0,
@@ -83,34 +110,29 @@ export default async function handler(req, res) {
     });
   }
 
-  // ── Session ───────────────────────────────────────────────────────────────
-  const rawCookie = req.cookies?.["aria_session"];
-  let sessionId = parseSignedCookie(rawCookie);
-  let isNewSession = false;
+  // ── Lecture de la session depuis le cookie chiffré ────────────────────────
+  const rawCookie = req.cookies?.[COOKIE_NAME];
+  let session = rawCookie ? decryptSession(rawCookie) : null;
+  if (!session) session = defaultSession();
 
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-    isNewSession = true;
-  }
-
-  let session = await getSession(sessionId);
-
-  // Sécurité : ignorer la patience envoyée par le client
-  const { messages: clientMessages } = req.body;
-  if (!Array.isArray(clientMessages)) {
+  // ── Validation du body ────────────────────────────────────────────────────
+  const { messages: clientMessages } = req.body || {};
+  if (!Array.isArray(clientMessages) || clientMessages.length === 0) {
     return res.status(400).json({ reply: "Requête invalide.", patienceChange: 0 });
   }
+  const userText = (clientMessages[clientMessages.length - 1]?.content || "").trim();
+  if (!userText) {
+    return res.status(400).json({ reply: "Message vide.", patienceChange: 0 });
+  }
 
-  session.messageCount = (session.messageCount || 0) + 1;
+  session.messageCount++;
 
-  // ── Construction du prompt Gemini ─────────────────────────────────────────
+  // ── Prompt Gemini ─────────────────────────────────────────────────────────
   const fatigue = Math.floor(session.messageCount / 10);
-  const patience = session.patience;
 
-  // Instruction système claire séparée du format
   const systemInstruction = `Tu es Aria, une étudiante membre du bureau d'une association d'électronique.
 Tu t'adresses à un membre de l'association qui ne te respecte pas. Tu le tutoies.
-Patience actuelle : ${patience}%.
+Patience actuelle : ${session.patience}%.
 
 PERSONNALITÉ :
 - Tu es condescendante, tes réponses sont courtes et froides.
@@ -129,45 +151,34 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après, sans 
 Structure exacte : {"reply": "ta réponse ici", "patienceChange": <nombre entier>}
 NE MENTIONNE JAMAIS le JSON, le score ou la patience dans ta réponse.`;
 
-  // Historique au format multi-tours Gemini
-  const recentHistory = (session.history || []).slice(-8);
+  // Historique multi-tours (8 derniers messages)
   const contents = [
-    // Premier tour : on injecte le system prompt dans le premier message user
-    ...recentHistory.map((m) => ({
+    ...session.history.slice(-8).map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
     })),
-    {
-      role: "user",
-      parts: [{ text: clientMessages[clientMessages.length - 1]?.content || "" }],
-    },
+    { role: "user", parts: [{ text: userText }] },
   ];
 
   // ── Appel Gemini ──────────────────────────────────────────────────────────
-  const apiKey = process.env.GEMINI_API_KEY;
   let reply = "...";
   let patienceChange = -2;
 
   try {
-    const geminiRes = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+    const geminiRes = await fetch(`${GEMINI_URL}?key=${process.env.GEMINI_API_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: systemInstruction }],
-        },
+        system_instruction: { parts: [{ text: systemInstruction }] },
         contents,
-        generationConfig: {
-          temperature: 0.8,
-          maxOutputTokens: 300,
-        },
+        generationConfig: { temperature: 0.8, maxOutputTokens: 300 },
       }),
     });
 
     const data = await geminiRes.json();
 
     if (data.error) {
-      console.error("[Gemini] API error:", JSON.stringify(data.error));
+      console.error("[Gemini] Erreur API:", JSON.stringify(data.error));
       return res.status(200).json({
         reply: `Erreur API : ${data.error.message}`,
         patienceChange: 0,
@@ -176,13 +187,12 @@ NE MENTIONNE JAMAIS le JSON, le score ou la patience dans ta réponse.`;
     }
 
     const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
     if (!rawText) {
-      console.error("[Gemini] No text in response:", JSON.stringify(data));
+      console.error("[Gemini] Pas de texte reçu:", JSON.stringify(data));
       throw new Error("Pas de texte reçu");
     }
 
-    // Nettoyage robuste du JSON
+    // Extraction robuste du JSON
     const firstBrace = rawText.indexOf("{");
     const lastBrace = rawText.lastIndexOf("}");
     if (firstBrace === -1 || lastBrace === -1) {
@@ -190,13 +200,11 @@ NE MENTIONNE JAMAIS le JSON, le score ou la patience dans ta réponse.`;
       throw new Error("JSON absent de la réponse");
     }
 
-    const cleanJson = rawText.substring(firstBrace, lastBrace + 1);
     let parsed;
-
     try {
-      parsed = JSON.parse(cleanJson);
+      parsed = JSON.parse(rawText.substring(firstBrace, lastBrace + 1));
     } catch (parseErr) {
-      console.error("[Gemini] JSON parse error:", parseErr.message, "| Raw:", cleanJson);
+      console.error("[Gemini] JSON malformé:", parseErr.message, "| Raw:", rawText);
       throw new Error("JSON malformé");
     }
 
@@ -205,35 +213,27 @@ NE MENTIONNE JAMAIS le JSON, le score ou la patience dans ta réponse.`;
       typeof parsed.patienceChange === "number" ? Math.round(parsed.patienceChange) : -2;
 
   } catch (err) {
-    console.error("[chat] Unhandled error:", err.message);
+    console.error("[chat] Erreur non gérée:", err.message);
     reply = "Stop. Je sature. Ton énergie est trop négative pour mon système.";
     patienceChange = -5;
   }
 
   // ── Mise à jour de la session ─────────────────────────────────────────────
   session.patience = Math.min(100, Math.max(0, session.patience + patienceChange));
-
-  // On stocke l'historique côté serveur (pas côté client)
   session.history = [
-    ...(session.history || []),
-    { role: "user", content: clientMessages[clientMessages.length - 1]?.content || "" },
+    ...session.history,
+    { role: "user", content: userText },
     { role: "assistant", content: reply },
-  ].slice(-20); // garde les 20 derniers messages
+  ].slice(-SESSION_MAX_HISTORY);
 
-  await saveSession(sessionId, session);
-
-  // Cookie signé HttpOnly
-  if (isNewSession) {
-    res.setHeader(
-      "Set-Cookie",
-      `aria_session=${createSignedCookie(sessionId)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL_SEC}`
-    );
-  }
+  // On chiffre et on renvoie la session dans le cookie
+  const sessionToken = encryptSession(session);
+  res.setHeader("Set-Cookie", buildSetCookie(sessionToken));
 
   return res.status(200).json({
     reply,
     patienceChange,
-    patience: session.patience,       // état autoritaire côté serveur
+    patience: session.patience,
     messageCount: session.messageCount,
   });
 }
