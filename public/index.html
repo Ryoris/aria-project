@@ -160,7 +160,7 @@
   <div class="chat-window" id="chatWindow">
     <div class="message ai">
       <div class="message-label">ARIA</div>
-      <div class="message-bubble">Salut, j'ai vu que le sol du local n'est pas propre. Tu peux le nettoyer stp ?</div>
+      <div class="message-bubble">Hé, c'est quoi toutes ces affiches qui tapissent les murs du bureau de l'association ? Tu ferais mieux d'avoir une bonne explication...</div>
     </div>
   </div>
 
@@ -327,7 +327,7 @@
 
   function restartGame() {
     patience = 100; messageCount = 0; isBlocked = false; history = [];
-    $('chatWindow').innerHTML = `<div class="message ai"><div class="message-label">ARIA</div><div class="message-bubble">Salut, j'ai vu que le sol du local n'est pas propre. Tu peux le nettoyer stp ?</div></div>`;
+    $('chatWindow').innerHTML = `<div class="message ai"><div class="message-label">ARIA</div><div class="message-bubble">Hé, c'est quoi toutes ces affiches qui tapissent les murs du bureau de l'association ? Tu ferais mieux d'avoir une bonne explication...</div></div>`;
     $('chatWindow').style.display = 'flex';
     $('inputArea').style.display = 'block';
     $('inputArea').classList.remove('blocked');
