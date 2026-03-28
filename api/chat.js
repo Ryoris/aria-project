@@ -152,12 +152,18 @@ Structure exacte : {"reply": "ta réponse ici", "patienceChange": <nombre entier
 NE MENTIONNE JAMAIS le JSON, le score ou la patience dans ta réponse.`;
 
   // Historique multi-tours (8 derniers messages)
+  // Gemma ne supporte pas system_instruction → on injecte le prompt
+  // dans un échange user/model fictif en tête de conversation.
+  const historyContents = session.history.slice(-8).map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+
   const contents = [
-    ...session.history.slice(-8).map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    })),
-    { role: "user", parts: [{ text: userText }] },
+    { role: "user",  parts: [{ text: systemInstruction }] },
+    { role: "model", parts: [{ text: "Compris. Je joue le rôle d'Aria et réponds uniquement en JSON." }] },
+    ...historyContents,
+    { role: "user",  parts: [{ text: userText }] },
   ];
 
   // ── Appel Gemini ──────────────────────────────────────────────────────────
@@ -169,7 +175,6 @@ NE MENTIONNE JAMAIS le JSON, le score ou la patience dans ta réponse.`;
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemInstruction }] },
         contents,
         generationConfig: { temperature: 0.8, maxOutputTokens: 300 },
       }),
